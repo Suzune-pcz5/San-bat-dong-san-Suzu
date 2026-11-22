@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Irish Housing Monitor · Nhóm 2</title>
+<style>__CSS__</style>
+</head>
+<body>
+<header class="top"><a class="brand" href="#market"><span aria-hidden="true">⌂</span> Irish Housing Monitor</a>
+  <nav aria-label="Mục dashboard"><a href="#market">Thị trường</a><a href="#forecast">Dự báo</a><a href="#backtest">Kiểm định</a><a href="#data">Dữ liệu</a></nav>
+</header>
+<main id="market">
+  <div class="hero">
+    <div class="eyebrow">NHẬP MÔN DỮ LIỆU LỚN · NHÓM 2</div>
+    <h1>Giá giao dịch nhà ở Ireland</h1>
+    <p id="coverage"></p>
+  </div>
+  <section class="filters" aria-label="Bộ lọc thị trường">
+    <label>County chính<select id="county"></select></label>
+    <label>So sánh với<select id="comparison"><option value="">Không so sánh</option></select></label>
+    <label>Quý quan sát<select id="quarter"></select></label>
+    <button id="export" type="button">Tải CSV khung đang xem</button>
+  </section>
+  <section class="cards" aria-label="Chỉ số chính" aria-live="polite">
+    <article><span>Giá trung vị</span><strong id="price"></strong><small id="price-note"></small></article>
+    <article><span>So với cùng kỳ</span><strong id="yoy"></strong><small id="yoy-note"></small></article>
+    <article><span>Số giao dịch</span><strong id="count"></strong><small>Nhà đã qua sử dụng</small></article>
+    <article><span>Dự báo cuối kỳ</span><strong id="endpoint"></strong><small id="end-note"></small></article>
+  </section>
+  <section class="panel" aria-labelledby="chart-heading">
+    <div class="panel-head"><div><h2 id="chart-heading">Diễn biến giá theo quý</h2><p id="chart-range" aria-live="polite"></p></div>
+      <div class="switches" aria-label="Khung thời gian">
+        <button data-view="4" type="button">1 năm</button><button data-view="12" type="button">3 năm</button>
+        <button data-view="20" type="button">5 năm</button><button data-view="all" type="button">Toàn kỳ</button>
+        <button data-view="future" type="button">Dự báo</button>
+      </div>
+    </div>
+    <div class="chart-options">
+      <label><input id="show-forecast" type="checkbox" checked> Dự báo</label>
+      <label><input id="show-band" type="checkbox" checked> Dải sai số thực nghiệm</label>
+      <div class="zoom"><button id="zoom-in" aria-label="Phóng to" type="button">+</button><button id="zoom-out" aria-label="Thu nhỏ" type="button">−</button><button id="pan-back" aria-label="Dịch về trước" type="button">←</button><button id="pan-next" aria-label="Dịch về sau" type="button">→</button></div>
+    </div>
+    <div class="legend"><span class="observed" id="observed-legend">Quan sát</span><span class="forecast" id="forecast-legend">Dự báo</span><span class="compare" id="compare-legend" hidden></span><span class="compare-forecast" id="compare-forecast-legend" hidden></span><span class="band" id="band-legend">Vùng tô · Dải sai số</span></div>
+    <div id="plot-wrap">
+      <canvas id="plot" aria-label="Biểu đồ giá nhà và số giao dịch theo quý. Dùng các nút và thanh thời gian để điều khiển." role="img"></canvas>
+      <div id="tooltip" hidden></div>
+    </div>
+    <div class="navigator">
+      <label>Từ quý <input id="from" type="range" aria-label="Quý bắt đầu"></label>
+      <label>Đến quý <input id="to" type="range" aria-label="Quý kết thúc"></label>
+    </div>
+    <p class="hint">Cuộn trên biểu đồ để phóng to hoặc thu nhỏ, kéo ngang để dịch, rê chuột để xem từng quý. Cột phía dưới là số giao dịch của County chính.</p>
+  </section>
+  <section class="panel" aria-labelledby="rank-heading">
+    <div class="panel-head"><div><h2 id="rank-heading">So sánh County</h2><p id="rank-note"></p></div>
+      <div class="table-controls"><label>Tìm County<input id="search" type="search" placeholder="Ví dụ Dublin"></label>
+      <label>Xếp theo<select id="sort"><option value="price">Giá cao nhất</option><option value="count">Nhiều giao dịch nhất</option><option value="yoy">Tăng mạnh nhất</option></select></label></div>
+    </div>
+    <div class="table-wrap"><table><thead><tr><th scope="col">County</th><th scope="col">Trung vị (EUR)</th><th scope="col">Giao dịch</th><th scope="col">So với cùng kỳ</th></tr></thead><tbody id="rank"></tbody></table></div>
+  </section>
+  <section id="forecast" class="panel">
+    <h2>Dự báo 3 năm và kiểm định</h2>
+    <p id="forecast-summary"></p>
+    <div class="details-grid">
+      <div><h3>So sánh mô hình (EUR)</h3><p id="validation"></p>
+        <div class="table-wrap"><table><thead><tr><th scope="col">Mô hình</th><th scope="col">MAE chọn mô hình</th><th scope="col">MAE kiểm tra</th><th scope="col">RMSE kiểm tra</th></tr></thead><tbody id="scores"></tbody></table></div>
+        <p class="hint">Mô hình được chọn theo MAE cuốn chiếu trước giai đoạn kiểm tra. Dải tô dùng phân vị 10% và 90% của sai số lịch sử theo từng bước, mở rộng để bao đường dự báo khi cần. Độ bao phủ tương lai chưa được xác nhận.</p>
+      </div>
+      <div><h3>Dự báo theo quý (EUR)</h3><div class="table-wrap forecast-scroll"><table><thead><tr><th scope="col">Quý</th><th scope="col">Giá</th><th scope="col">Thấp</th><th scope="col">Cao</th></tr></thead><tbody id="future"></tbody></table></div></div>
+    </div>
+  </section>
+  <section id="backtest" class="panel" aria-labelledby="backtest-title">
+    <h2 id="backtest-title">Kiểm định 3 năm trên dữ liệu đã biết</h2>
+    <label>Chế độ kiểm định
+      <select id="backtest-mode">
+        <option value="fixed">Dự báo 12 quý từ một mốc</option>
+        <option value="rolling">Dự báo quý kế tiếp, cập nhật mỗi quý</option>
+      </select>
+    </label>
+    <p id="backtest-description"></p>
+    <p id="backtest-diagnostics"></p>
+    <div id="backtest-results" class="details-grid">
+      <div>
+        <div class="legend"><span class="observed">Giá thật</span><span class="forecast">Dự báo giả lập</span><span class="band">Dải sai số thực nghiệm</span></div>
+        <svg id="backtest-plot" viewBox="0 0 600 245" role="img" aria-label="Giá thật, dự báo giả lập và dải sai số thực nghiệm qua 12 quý"></svg>
+      </div>
+      <div class="table-wrap forecast-scroll"><table>
+        <thead><tr><th scope="col">Quý</th><th scope="col">Giá thật (EUR)</th><th scope="col">Dự báo (EUR)</th><th scope="col">Lệch (EUR)</th></tr></thead>
+        <tbody id="backtest-rows"></tbody>
+      </table></div>
+    </div>
+    <p class="hint">Dải vàng dựa trên sai số cuốn chiếu trước giai đoạn kiểm tra. Chế độ 12 quý dùng dải riêng cho từng bước, còn chế độ cập nhật dùng dải của bước một quý. Chỉ số nằm trong dải đo trên 12 quý kiểm tra. Chế độ cập nhật giả định trung vị quý trước đã có tại thời điểm dự báo. Thực tế dữ liệu có thể về trễ hoặc được chỉnh sửa.</p>
+  </section>
+  <section id="data" class="panel">
+    <h2>Dữ liệu và cách đọc</h2><dl id="dataset"></dl>
+    <p>Đơn vị quan sát là giao dịch ghi nhận. Trung vị giá có thể đổi khi cơ cấu nhà giao dịch thay đổi. Biểu đồ dùng EUR danh nghĩa. Chỉ hiển thị thay đổi cùng kỳ và đưa County vào bảng xếp hạng khi kỳ liên quan đạt ngưỡng quy định.</p>
+    <p>Chuỗi dự báo yêu cầu ít nhất 30 giao dịch ở mỗi quý được dùng để huấn luyện hoặc kiểm định. Giá dự báo mô tả trung vị giao dịch của County. Mốc quý II/2026 được chọn vì CSV v6 chỉ có dữ liệu đến 25/09/2026.</p>
+    <p>Nguồn <a href="https://www.kaggle.com/datasets/fionnhughes/property-price-register">Irish Property Price Register, Kaggle v6</a>. Tham khảo cách trình bày tại <a href="https://www.redfin.com/news/data-center/home-price-index/">Redfin</a>, <a href="https://www.zillow.com/research/market-data/">Zillow</a> và <a href="https://www.tradingview.com/support/solutions/43000748166-how-to-configure-your-supercharts/">TradingView</a>.</p>
+  </section>
+</main>
+<script id="market-data" type="application/json">__DATA__</script>
+<script>__JS__</script>
+</body>
+</html>
