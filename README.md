@@ -1,6 +1,6 @@
 # Phân tích giá giao dịch nhà ở Ireland
 
-Đồ án Nhập môn Dữ liệu lớn của Nhóm 2. Công đoạn chính là **Processing → Analytics**. PySpark đọc giao dịch, chuẩn hóa, lọc và tính giá trung vị theo County và theo kỳ. Python dùng bảng quý do Spark tạo để kiểm định, dự báo và đóng gói dashboard.
+Đồ án Nhập môn Dữ liệu lớn của Nhóm 2. Pipeline gồm bảy công đoạn từ dữ liệu nguồn tới tín hiệu rà soát theo County. Phần xử lý chính dùng PySpark để chuẩn hóa, lọc và tổng hợp theo tháng, quý. Python dùng bảng quý do Spark tạo để kiểm định, dự báo và đóng gói dashboard.
 
 ## Dữ liệu
 
@@ -14,7 +14,7 @@ Lượt chạy PySpark 4.1.1 trên toàn bộ CSV khớp với bảng đối chi
 
 Trong `outputs/baseline_doi_chieu_q2_2026/`, kết quả kiểm định và dự báo cơ sở bao phủ 26 County. Tệp `dublin_theo_quy.png` minh họa giá trung vị, số giao dịch và hai đường dự báo của Dublin. Quý II/2026 là mốc được chọn vì CSV kết thúc trước khi quý III khép lại.
 
-## Chạy từ CSV gốc đến dashboard
+## Chạy pipeline bảy công đoạn
 
 Dùng Python 3.11–3.13 và bộ JDK đầy đủ phiên bản 17 hoặc 21. Mở PowerShell tại thư mục đồ án và kiểm tra `JAVA_HOME` trỏ đến thư mục gốc của JDK. Trên Windows, đặt môi trường Python và JDK ở đường dẫn không có dấu ngoặc vì trình khởi động Spark có thể lỗi khi đọc các đường dẫn đó.
 
@@ -23,6 +23,34 @@ $sparkEnv = Join-Path $env:LOCALAPPDATA 'nhom2-spark'
 python -m venv $sparkEnv
 $sparkPython = Join-Path $sparkEnv 'Scripts\python.exe'
 & $sparkPython -m pip install -r requirements.txt
+& $sparkPython -X utf8 .\pipeline.py .\data\property_price_register.csv --through 2026-Q2 --output .\outputs\pipeline_v6_parquet
+```
+
+Mỗi lượt chạy chọn một thư mục đầu ra mới. `run_manifest.json` được ghi sau khi cả bảy công đoạn hoàn tất. Tệp này ghi đầu vào, đầu ra và thời gian từng công đoạn. Nếu lượt chạy dừng giữa chừng, thư mục kết quả giữ lại các tệp đã tạo để kiểm tra lỗi.
+
+| Công đoạn | Triển khai và đầu ra |
+| --- | --- |
+| Sources | Kiểm tra lược đồ CSV, ghi nguồn, phiên bản, dung lượng và SHA-256 vào `01_sources/source.json`. |
+| Ingestion | Python producer ghi CSV vào vùng tạm theo khối byte và đối chiếu SHA-256 trước khi bàn giao. Xem `02_ingestion/receipt.json`. |
+| Storage | Lưu snapshot CSV để đối chiếu và bản Parquet nén Snappy do PyArrow ghi. `03_storage/catalog.json` ghi đường dẫn, số dòng, dung lượng và SHA-256. |
+| Processing | Spark đọc Parquet, dùng API DataFrame của PySpark để chuẩn hóa, lọc và tổng hợp. Kết quả nằm trong `04_processing/tables/`. |
+| Analytics | Chọn mô hình, kiểm định giữ riêng và dự báo 12 quý theo County. CSV và JSON trong `05_analytics/`. |
+| Presentation | Mở `06_presentation/dashboard.html` để tra cứu và so sánh County, hoặc nhập `06_presentation/grafana_dashboard.json` vào Grafana. |
+| Decision/Action | Ghi danh sách County cần rà soát vào `07_decision_action/county_actions.csv`. Mặc định gắn cờ khi trung vị giá nhà cũ tăng hoặc giảm ít nhất 10% so với cùng quý năm trước và mỗi quý có ít nhất 30 giao dịch. |
+
+`--alert-yoy-pct` chỉnh ngưỡng tín hiệu, theo đơn vị phần trăm. Quy tắc áp dụng trên giá thực tế đã quan sát. Lượt chạy lưu tín hiệu và hành động đề xuất tại máy.
+
+Ảnh slide liệt kê sáu đoạn chuyển tiếp nối bảy công đoạn. Các công nghệ nhóm dùng lần lượt là **Python producer theo lô → PyArrow/Parquet → Spark/PySpark → PySpark và Python → Grafana hoặc HTML → Python rule engine**. Dữ liệu đầu vào là snapshot Kaggle, được xử lý theo lô.
+
+### Xem kết quả bằng Grafana
+
+1. Mở một Grafana cục bộ, thêm nguồn dữ liệu **TestData** trong **Connections → Data sources**.
+2. Trong **Dashboards → New → Import**, tải lên `06_presentation/grafana_dashboard.json` và chọn nguồn TestData vừa thêm.
+3. Dashboard có biểu đồ giá và dự báo, cùng bảng giá, số giao dịch và dự báo cuối kỳ theo County. Các khung dữ liệu nhúng từ lượt chạy thật qua **Raw Frames**, nên xuất lại JSON khi cập nhật snapshot.
+
+### Chạy riêng Processing và dashboard
+
+```powershell
 & $sparkPython -X utf8 .\phan_tich.py .\data\property_price_register.csv --output .\outputs\v6
 & $sparkPython -X utf8 .\truc_quan_hoa.py .\outputs\v6 --through 2026-Q2 --output .\outputs\v6\dashboard.html
 ```

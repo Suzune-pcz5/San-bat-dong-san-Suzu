@@ -65,8 +65,8 @@ def write_csv(frame, path):
         writer.writerows(frame.toLocalIterator())
 
 
-def process(spark, source, header, destination, min_transactions):
-    raw = (
+def process(spark, source, header, destination, min_transactions, parquet_source=None):
+    raw = spark.read.parquet(parquet_source.as_posix()) if parquet_source else (
         spark.read.schema(", ".join(f"{name} STRING" for name in header))
         .option("header", True)
         .option("enforceSchema", False)
@@ -74,6 +74,8 @@ def process(spark, source, header, destination, min_transactions):
         .option("mode", "FAILFAST")
         .csv(source.as_posix())
     )
+    if parquet_source and raw.dtypes != [(name, "string") for name in header]:
+        raise ValueError("Lược đồ Parquet khác CSV nguồn.")
     normalized = normalize(raw).cache()
     invalid_date = F.col("sale_date").isNull()
     invalid_county = F.col("county").isNull()
@@ -153,6 +155,10 @@ def process(spark, source, header, destination, min_transactions):
         spark_version=spark.version,
         spark_master=spark.sparkContext.master,
     )
+    if parquet_source:
+        with parquet_source.open("rb") as file:
+            quality["processing_sha256"] = hashlib.file_digest(file, "sha256").hexdigest()
+        quality["processing_format"] = "Parquet"
     (destination / "quality.json").write_text(
         json.dumps(quality, indent=2, default=str) + "\n", encoding="utf-8"
     )
@@ -162,6 +168,7 @@ def process(spark, source, header, destination, min_transactions):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("csv", type=Path, help="CSV từ bộ Irish Property Price Register.")
+    parser.add_argument("--parquet", type=Path, help="Bản Parquet tạo từ CSV nguồn.")
     parser.add_argument("--output", required=True, type=Path, help="Thư mục kết quả mới.")
     parser.add_argument("--min-transactions", type=int, default=30)
     args = parser.parse_args()
@@ -175,6 +182,9 @@ def main():
     if args.min_transactions < 1:
         parser.error("--min-transactions phải lớn hơn hoặc bằng 1.")
     header = input_header(source)
+    parquet_source = args.parquet.resolve() if args.parquet else None
+    if parquet_source and not parquet_source.is_file():
+        parser.error(f"Không tìm thấy Parquet: {parquet_source}")
 
     os.environ.setdefault("SPARK_LOCAL_IP", "127.0.0.1")
     spark = (
@@ -190,7 +200,7 @@ def main():
         with TemporaryDirectory(dir=output.parent, prefix=".ireland-") as temp:
             staging = Path(temp) / "result"
             staging.mkdir()
-            quality = process(spark, source, header, staging, args.min_transactions)
+            quality = process(spark, source, header, staging, args.min_transactions, parquet_source)
             staging.rename(output)
         print(
             f"{quality['raw_rows']:,} giao dịch đầu vào. "
